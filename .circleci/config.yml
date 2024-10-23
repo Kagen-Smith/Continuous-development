@@ -1,54 +1,40 @@
-# This config was automatically generated from your source code
-# Stacks detected: deps:node:.
 version: 2.1
+
 orbs:
-  node: circleci/node@5
+  cypress: cypress-io/cypress@3.3.1
+
 jobs:
-  test-node:
-    # Install node dependencies and run tests
-    executor: node/default
-    steps:
-      - checkout
-      - node/install-packages:
-          pkg-manager: npm
-      - run:
-          name: Run tests
-          command: npm test --passWithNoTests
-  build-node:
-    # Build node project
-    executor: node/default
-    steps:
-      - checkout
-      - node/install-packages:
-          pkg-manager: npm
-      - run:
-          command: npm run build
-      - run:
-          name: Create the ~/artifacts directory if it doesn't exist
-          command: mkdir -p ~/artifacts
-      # Copy output to artifacts dir
-      - run:
-          name: Copy artifacts
-          command: cp -R build dist public .output .next .docusaurus ~/artifacts 2>/dev/null || true
-      - store_artifacts:
-          path: ~/artifacts
-          destination: node-build
-  deploy:
-    # This is an example deploy job, not actually used by the workflow
+  deploy-to-render-staging:
     docker:
-      - image: cimg/base:stable
+      - image: cimg/base:current
     steps:
-      # Replace this with steps to deploy to users
       - run:
-          name: deploy
-          command: '#e.g. ./deploy.sh'
+          name: Deploy to Render Staging
+          # TODO: What is happening in the following command?
+          # it is sending a POST request to the Render Staging deployhook
+          command: |
+            echo "Deploying to Render Staging"
+            curl $RENDER_STAGING_DEPLOYHOOK
+
 workflows:
-  build-and-test:
+  run-tests-and-deploy-to-staging:
     jobs:
-      - test-node
-      - build-node:
+      - cypress/run:
+          name: run-e2e-tests
+          cypress-command: npx cypress run --browser electron --headless
+          # Make sure to add MONGODB_URI to ENVIRONMENT VARIABLES in CircleCI so that the tests can connect to the database
+          start-command: npm run start:dev
+      - cypress/run:
+          name: run-component-tests
+          cypress-command: npx cypress run --component
+      - deploy-to-render-staging:
+          # TODO: What does the requires key do?
+          # it specifies that the deploy-to-render-staging job requires the run-e2e-tests and run-component-tests jobs to pass before it can run
           requires:
-            - test-node
-    # - deploy:
-    #     requires:
-    #       - build-node
+            - run-e2e-tests
+            - run-component-tests
+          # TODO: What does the filters key do?
+          # it specifies that the deploy-to-render-staging job should only run when the branch is main
+          filters:
+            branches:
+              only: main
